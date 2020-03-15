@@ -22,4 +22,8 @@ public class TransactionRepository {
         return result;
     }
 
+    public void insert(Transaction t) {
+        this.dao.save(t);
+    }
+
 }

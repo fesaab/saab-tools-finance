@@ -119,22 +119,23 @@ Resources:
       FunctionName: !GetAtt SMSHandler.Arn
 
   ## API related resources
-  TransactionsListFunction:
-    Type: AWS::Serverless::Function
-    Properties:
-      Handler: com.saab.tools.finance.handler.FinanceHandler::listTransactions
-      Runtime: java11
-      MemorySize: 512
-      Environment:
-        Variables:
-          PARAM1: VALUE
-      Events:
-        TransactionsList:
-          Type: Api
-          Properties:
-            Path: /finance/transactions
-            Method: get
-      Role: !GetAtt RoleDynamoDbFinanceTransactionFullAccess.Arn
+  ## Commented until it is time to deal with the API
+#  TransactionsListFunction:
+#    Type: AWS::Serverless::Function
+#    Properties:
+#      Handler: com.saab.tools.finance.handler.FinanceHandler::listTransactions
+#      Runtime: java11
+#      MemorySize: 512
+#      Environment:
+#        Variables:
+#          PARAM1: VALUE
+#      Events:
+#        TransactionsList:
+#          Type: Api
+#          Properties:
+#            Path: /finance/transactions
+#            Method: get
+#      Role: !GetAtt RoleDynamoDbFinanceTransactionFullAccess.Arn
 
 Outputs:
   # ServerlessRestApi is an implicit API created out of Events key under Serverless::Function

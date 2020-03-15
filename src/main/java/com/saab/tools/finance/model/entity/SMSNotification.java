@@ -1,7 +1,7 @@
 package com.saab.tools.finance.model.entity;
 
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
-import com.fasterxml.jackson.datatype.jsr310.deser.LocalDateDeserializer;
+import com.saab.tools.finance.model.converter.LocalDateTimeJsonDeserializer;
 import lombok.*;
 import org.apache.commons.lang3.builder.ReflectionToStringBuilder;
 import org.apache.commons.lang3.builder.ToStringStyle;
@@ -24,7 +24,7 @@ import java.time.LocalDateTime;
 @Setter
 public class SMSNotification {
 
-    @JsonDeserialize(using = LocalDateDeserializer.class)
+    @JsonDeserialize(using = LocalDateTimeJsonDeserializer.class)
     private LocalDateTime date;
     private String number;
     private String message;
