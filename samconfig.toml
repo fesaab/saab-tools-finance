@@ -1,0 +1,9 @@
+version = 0.1
+[default]
+[default.deploy]
+[default.deploy.parameters]
+stack_name = "saab-tools-app"
+s3_bucket = "aws-sam-cli-managed-default-samclisourcebucket-18t18pd1yskgv"
+s3_prefix = "saab-tools-app"
+region = "us-east-1"
+capabilities = "CAPABILITY_IAM CAPABILITY_NAMED_IAM"

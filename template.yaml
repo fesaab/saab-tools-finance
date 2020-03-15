@@ -1,0 +1,145 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Saab Tools with daily useful applications!
+
+Globals:
+  Function:
+    Timeout: 20
+
+Resources:
+
+  ## DynamoDB related resources
+  TransactionsDB:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: FinanceTransaction
+      ProvisionedThroughput:
+        ReadCapacityUnits: 5
+        WriteCapacityUnits: 5
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+  RoleDynamoDbFinanceTransactionFullAccess:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: "RoleDynamoDbFinanceTransactionFullAccess"
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+            - Effect: Allow
+              Principal:
+                Service:
+                  - lambda.amazonaws.com
+              Action:
+                - 'sts:AssumeRole'
+      Policies:
+        - PolicyName: PolicyDynamoDbFinanceTransactionFullAccess
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              Effect: "Allow"
+              Action:
+                - "dynamodb:BatchGetItem"
+                - "dynamodb:BatchWriteItem"
+                - "dynamodb:ConditionCheckItem"
+                - "dynamodb:PutItem"
+                - "dynamodb:DescribeTable"
+                - "dynamodb:DeleteItem"
+                - "dynamodb:GetItem"
+                - "dynamodb:Scan"
+                - "dynamodb:Query"
+                - "dynamodb:UpdateItem"
+              Resource:
+                - "arn:aws:dynamodb:*:*:table/*/index/*"
+                - !Join
+                  - ''
+                  - - 'arn:aws:dynamodb:'
+                    - 'us-east-1:'
+                    - !Ref 'AWS::AccountId'
+                    - ':table/FinanceTransaction'
+
+  ## SMS related resources
+  SMSDeadLetterQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: SMSDeadLetterQueue
+  SMSQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: SMSQueue
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt SMSDeadLetterQueue.Arn
+        maxReceiveCount: 5
+  RoleLambdaSMSQueue:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: "RoleLambdaSMSQueue"
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      Policies:
+        - PolicyName: PolicyLambdaSMSQueue
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              Effect: "Allow"
+              Action:
+                - "sqs:ReceiveMessage"
+                - "sqs:DeleteMessage"
+                - "sqs:GetQueueAttributes"
+                - "sqs:ChangeMessageVisibility"
+              Resource:
+                - !GetAtt SMSQueue.Arn
+  SMSHandler:
+    Type: AWS::Lambda::Function
+    Properties:
+      CodeUri: Finance
+      Handler: com.saab.tools.finance.handler.SMSHandler::handleRequest
+      Runtime: java11
+      MemorySize: 512
+      Environment:
+        Variables:
+          PARAM1: VALUE
+      Role: !GetAtt RoleLambdaSMSQueue.Arn
+  SMSHandlerEventSourceMapping:
+    Type: AWS::Lambda::EventSourceMapping
+    Properties:
+      BatchSize: 10
+      Enabled: true
+      EventSourceArn: !GetAtt SMSQueue.Arn
+      FunctionName: !GetAtt SMSHandler.Arn
+
+  ## API related resources
+  TransactionsListFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: com.saab.tools.finance.handler.FinanceHandler::listTransactions
+      Runtime: java11
+      MemorySize: 512
+      Environment:
+        Variables:
+          PARAM1: VALUE
+      Events:
+        TransactionsList:
+          Type: Api
+          Properties:
+            Path: /finance/transactions
+            Method: get
+      Role: !GetAtt RoleDynamoDbFinanceTransactionFullAccess.Arn
+
+Outputs:
+  # ServerlessRestApi is an implicit API created out of Events key under Serverless::Function
+  # Find out more about other implicit resources you can reference within SAM
+  # https://github.com/awslabs/serverless-application-model/blob/master/docs/internals/generated_resources.rst#api
+  TransactionsListApi:
+    Description: "API Gateway endpoint URL to [Transactions -> list]"
+    Value: !Sub "https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/finance/transactions/"
