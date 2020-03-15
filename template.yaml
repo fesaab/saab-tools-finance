@@ -1,12 +1,93 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
-Description: Saab Tools with daily useful applications!
+Description: Saab Tools Finance (APIs and bank SMS handling)
 
 Globals:
   Function:
     Timeout: 20
 
 Resources:
+
+  ## IAM Policies
+  LogGroupFullAccessPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: LogGroupFullAccessPolicy
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          Effect: "Allow"
+          Action:
+            - "logs:CreateLogGroup"
+            - "logs:CreateLogStream"
+            - "logs:PutLogEvents"
+            - "logs:DescribeLogStreams"
+          Resource:
+            - "*"
+  SMSQueueHandlerPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: SMSQueueHandlerPolicy
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          Effect: "Allow"
+          Action:
+            - "sqs:ReceiveMessage"
+            - "sqs:DeleteMessage"
+            - "sqs:GetQueueAttributes"
+            - "sqs:ChangeMessageVisibility"
+          Resource:
+            - !GetAtt SMSQueue.Arn
+  DynamoDBFinanceTransactionFullAccessPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: DynamoDBFinanceTransactionFullAccessPolicy
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          Effect: "Allow"
+          Action:
+            - "dynamodb:BatchGetItem"
+            - "dynamodb:BatchWriteItem"
+            - "dynamodb:ConditionCheckItem"
+            - "dynamodb:PutItem"
+            - "dynamodb:DescribeTable"
+            - "dynamodb:DeleteItem"
+            - "dynamodb:GetItem"
+            - "dynamodb:Scan"
+            - "dynamodb:Query"
+            - "dynamodb:UpdateItem"
+          Resource:
+            - "arn:aws:dynamodb:*:*:table/*/index/*"
+            - !Join
+              - ''
+              - - 'arn:aws:dynamodb:'
+                - 'us-east-1:'
+                - !Ref 'AWS::AccountId'
+                - ':table/FinanceTransaction'
+  DynamoDBSmsFullAccessPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: DynamoDBSmsFullAccessPolicy
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          Effect: "Allow"
+          Action:
+            - "dynamodb:BatchGetItem"
+            - "dynamodb:BatchWriteItem"
+            - "dynamodb:ConditionCheckItem"
+            - "dynamodb:PutItem"
+            - "dynamodb:DescribeTable"
+            - "dynamodb:DeleteItem"
+            - "dynamodb:GetItem"
+            - "dynamodb:Scan"
+            - "dynamodb:Query"
+            - "dynamodb:UpdateItem"
+          Resource:
+            - "arn:aws:dynamodb:*:*:table/*/index/*"
+            - !GetAtt SmsDB.Arn
 
   ## DynamoDB related resources
   TransactionsDB:
@@ -22,44 +103,19 @@ Resources:
       KeySchema:
         - AttributeName: id
           KeyType: HASH
-  RoleDynamoDbFinanceTransactionFullAccess:
-    Type: AWS::IAM::Role
+  SmsDB:
+    Type: AWS::DynamoDB::Table
     Properties:
-      RoleName: "RoleDynamoDbFinanceTransactionFullAccess"
-      AssumeRolePolicyDocument:
-        Version: 2012-10-17
-        Statement:
-            - Effect: Allow
-              Principal:
-                Service:
-                  - lambda.amazonaws.com
-              Action:
-                - 'sts:AssumeRole'
-      Policies:
-        - PolicyName: PolicyDynamoDbFinanceTransactionFullAccess
-          PolicyDocument:
-            Version: 2012-10-17
-            Statement:
-              Effect: "Allow"
-              Action:
-                - "dynamodb:BatchGetItem"
-                - "dynamodb:BatchWriteItem"
-                - "dynamodb:ConditionCheckItem"
-                - "dynamodb:PutItem"
-                - "dynamodb:DescribeTable"
-                - "dynamodb:DeleteItem"
-                - "dynamodb:GetItem"
-                - "dynamodb:Scan"
-                - "dynamodb:Query"
-                - "dynamodb:UpdateItem"
-              Resource:
-                - "arn:aws:dynamodb:*:*:table/*/index/*"
-                - !Join
-                  - ''
-                  - - 'arn:aws:dynamodb:'
-                    - 'us-east-1:'
-                    - !Ref 'AWS::AccountId'
-                    - ':table/FinanceTransaction'
+      TableName: Sms
+      ProvisionedThroughput:
+        ReadCapacityUnits: 5
+        WriteCapacityUnits: 5
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
 
   ## SMS related resources
   SMSDeadLetterQueue:
@@ -86,40 +142,63 @@ Resources:
                 - lambda.amazonaws.com
             Action:
               - 'sts:AssumeRole'
-      Policies:
-        - PolicyName: PolicyLambdaSMSQueue
-          PolicyDocument:
-            Version: 2012-10-17
-            Statement:
-              Effect: "Allow"
-              Action:
-                - "sqs:ReceiveMessage"
-                - "sqs:DeleteMessage"
-                - "sqs:GetQueueAttributes"
-                - "sqs:ChangeMessageVisibility"
-              Resource:
-                - !GetAtt SMSQueue.Arn
+      ManagedPolicyArns:
+        - !Ref DynamoDBFinanceTransactionFullAccessPolicy
+        - !Ref LogGroupFullAccessPolicy
+        - !Ref SMSQueueHandlerPolicy
+        - !Ref DynamoDBSmsFullAccessPolicy
   SMSHandler:
     Type: AWS::Lambda::Function
     Properties:
-      CodeUri: Finance
+      FunctionName: SMSHandler
       Handler: com.saab.tools.finance.handler.SMSHandler::handleRequest
       Runtime: java11
       MemorySize: 512
+      Timeout: 30
       Environment:
         Variables:
-          PARAM1: VALUE
+          QUEUE_URL: !Ref SMSQueue
       Role: !GetAtt RoleLambdaSMSQueue.Arn
   SMSHandlerEventSourceMapping:
     Type: AWS::Lambda::EventSourceMapping
+    DependsOn:
+      - SMSHandler
+      - SMSQueue
     Properties:
       BatchSize: 10
       Enabled: true
       EventSourceArn: !GetAtt SMSQueue.Arn
       FunctionName: !GetAtt SMSHandler.Arn
+  SMSHandlerLogGroup:
+    Type: AWS::Logs::LogGroup
+    DependsOn:
+      - SMSHandler
+    Properties:
+      RetentionInDays: 14
+      LogGroupName:
+        !Join
+          - ''
+          - - '/aws/lambda/'
+            - !Ref 'SMSHandler'
 
   ## API related resources
   ## Commented until it is time to deal with the API
+#  RoleDynamoDbFinanceTransactionFullAccess:
+#    Type: AWS::IAM::Role
+#    Properties:
+#      RoleName: "RoleDynamoDbFinanceTransactionFullAccess"
+#      AssumeRolePolicyDocument:
+#        Version: 2012-10-17
+#        Statement:
+#          - Effect: Allow
+#            Principal:
+#              Service:
+#                - lambda.amazonaws.com
+#            Action:
+#              - 'sts:AssumeRole'
+#      ManagedPolicyArns:
+#        - !Ref DynamoDBFinanceTransactionFullAccessPolicy
+#        - !Ref LogGroupFullAccessPolicy
 #  TransactionsListFunction:
 #    Type: AWS::Serverless::Function
 #    Properties:
@@ -137,10 +216,10 @@ Resources:
 #            Method: get
 #      Role: !GetAtt RoleDynamoDbFinanceTransactionFullAccess.Arn
 
-Outputs:
-  # ServerlessRestApi is an implicit API created out of Events key under Serverless::Function
-  # Find out more about other implicit resources you can reference within SAM
-  # https://github.com/awslabs/serverless-application-model/blob/master/docs/internals/generated_resources.rst#api
-  TransactionsListApi:
-    Description: "API Gateway endpoint URL to [Transactions -> list]"
-    Value: !Sub "https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/finance/transactions/"
+#Outputs:
+#  # ServerlessRestApi is an implicit API created out of Events key under Serverless::Function
+#  # Find out more about other implicit resources you can reference within SAM
+#  # https://github.com/awslabs/serverless-application-model/blob/master/docs/internals/generated_resources.rst#api
+#  TransactionsListApi:
+#    Description: "API Gateway endpoint URL to [Transactions -> list]"
+#    Value: !Sub "https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/finance/transactions/"
