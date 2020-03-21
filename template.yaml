@@ -126,6 +126,7 @@ Resources:
     Type: AWS::SQS::Queue
     Properties:
       QueueName: SMSQueue
+      ReceiveMessageWaitTimeSeconds: 20
       RedrivePolicy:
         deadLetterTargetArn: !GetAtt SMSDeadLetterQueue.Arn
         maxReceiveCount: 5
