@@ -7,32 +7,52 @@ import com.amazonaws.services.sqs.AmazonSQS;
 import com.amazonaws.services.sqs.AmazonSQSClientBuilder;
 import com.amazonaws.services.sqs.model.DeleteMessageRequest;
 import com.amazonaws.services.sqs.model.DeleteMessageResult;
-import com.fasterxml.jackson.databind.DeserializationFeature;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.saab.tools.finance.model.entity.SMSNotification;
 import com.saab.tools.finance.model.entity.Transaction;
 import com.saab.tools.finance.model.repository.SmsRepository;
+import com.saab.tools.finance.model.repository.TransactionRepository;
+import com.saab.tools.finance.service.SMSParser;
+import com.saab.tools.finance.service.TransactionParser;
 import lombok.extern.log4j.Log4j2;
 
-import java.math.BigDecimal;
+import java.util.List;
 
+/**
+ {
+ "date": 1584888588001,
+ "number": "+2783930001111",
+ "message": "Nedbank: Transaction. Purchase of R349,00 on a/c **2370 at NORMAN GOODFELLOWS UN. 21 Mar 20 at 12:22
+ }
+
+ {
+ "date": 1584888588001,
+ "number": "+2783930001111",
+ "message": "Nedbank: Transaction. Purchase of R21,56 on a/c **2370 at UBER SA helpubercom Ga. 21 Mar 20 at 12:22"
+ }
+
+ {
+ "date": 1584888588001,
+ "number": "+2783930001111",
+ "message": "Nedbank: Transaction.  R21,00 on a/c **2370 at UBER SA helpubercom Ga was reversed.  21 Mar 20 at 12:29"
+ }
+ */
 @Log4j2
 public class SMSHandler implements RequestHandler<SQSEvent, Void> {
 
-    private ObjectMapper objectMapper;
-    private SmsRepository repository;
+    private SmsRepository smsRepository;
+    private TransactionRepository transactionRepository;
     private AmazonSQS sqs;
+    private SMSParser smsParser;
+    private TransactionParser transactionParser;
+
     private final String QUEUE_URL = System.getenv("QUEUE_URL");
 
     public SMSHandler() {
-        this.objectMapper = new ObjectMapper()
-                .registerModule(new JavaTimeModule())
-                .configure(DeserializationFeature.READ_DATE_TIMESTAMPS_AS_NANOSECONDS, false);
-
-        this.repository = new SmsRepository();
-
-        sqs = AmazonSQSClientBuilder.defaultClient();
+        this.sqs = AmazonSQSClientBuilder.defaultClient();
+        this.smsRepository = new SmsRepository();
+        this.transactionRepository = new TransactionRepository();
+        this.smsParser = new SMSParser();
+        this.transactionParser = new TransactionParser();
     }
 
     @Override
@@ -43,12 +63,35 @@ public class SMSHandler implements RequestHandler<SQSEvent, Void> {
 
             try {
                 // Convert the body of the message to a SMSNotification
-                SMSNotification sms = objectMapper.readValue(msg.getBody(), SMSNotification.class);
-                log.info("SMS sucessfully converted: " + sms.toString());
+                SMSNotification sms = smsParser.parse(msg.getBody());
+                log.info("SMS sucessfully converted: " + sms);
 
-                // From the SMSNotification create the transaction on DB
-                repository.insert(sms);
-                log.info("Sms saved on DB: " + sms.getId());
+                // Parse the SMS to a Transaction
+                Transaction transaction = transactionParser.parseFromSms(sms);
+                log.info("Transaction parsed from SMS: " + transaction);
+
+                // TODO: antes de salvar no banco primeiro atualizar no Google Sheets!!!!
+
+                // If it is a new transaction then save it
+                if (!transaction.isReversed()) {
+                    transactionRepository.save(transaction);
+                    log.info("Transaction saved on DB: " + transaction.getId());
+                    // TODO: publicar métrica com o valor da transação (será que faz sentido?)
+                }
+                // If the transaction was reversed then just updated it
+                else {
+                    List<Transaction> foundTransactionList = transactionRepository.findByDescriptionAndValue(transaction.getDescription(), transaction.getValue());
+                    if (foundTransactionList != null && !foundTransactionList.isEmpty()) {
+                        Transaction lastTransaction = foundTransactionList.get(foundTransactionList.size() - 1);
+                        lastTransaction.setReversed(transaction.isReversed());
+                        lastTransaction.setReversedDate(transaction.getReversedDate());
+                        transactionRepository.save(lastTransaction);
+                        log.info("Transaction reversed on DB: " + lastTransaction);
+                    } else {
+                        log.warn("COULD NOT FIND THE ORIGINAL TRANSACTION TO REVERT!!! Transaction: " + transaction + ". SMS: " + sms);
+                        // TODO: publicar métrica
+                    }
+                }
 
                 // Finaly remove the register from the queue
                 log.info("About to delete message from the queue. Message receipt handler: " + msg.getReceiptHandle());

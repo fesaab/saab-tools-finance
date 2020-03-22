@@ -66,47 +66,12 @@ Resources:
                 - 'us-east-1:'
                 - !Ref 'AWS::AccountId'
                 - ':table/FinanceTransaction'
-  DynamoDBSmsFullAccessPolicy:
-    Type: AWS::IAM::ManagedPolicy
-    Properties:
-      ManagedPolicyName: DynamoDBSmsFullAccessPolicy
-      PolicyDocument:
-        Version: 2012-10-17
-        Statement:
-          Effect: "Allow"
-          Action:
-            - "dynamodb:BatchGetItem"
-            - "dynamodb:BatchWriteItem"
-            - "dynamodb:ConditionCheckItem"
-            - "dynamodb:PutItem"
-            - "dynamodb:DescribeTable"
-            - "dynamodb:DeleteItem"
-            - "dynamodb:GetItem"
-            - "dynamodb:Scan"
-            - "dynamodb:Query"
-            - "dynamodb:UpdateItem"
-          Resource:
-            - "arn:aws:dynamodb:*:*:table/*/index/*"
-            - !GetAtt SmsDB.Arn
 
   ## DynamoDB related resources
   TransactionsDB:
     Type: AWS::DynamoDB::Table
     Properties:
       TableName: FinanceTransaction
-      ProvisionedThroughput:
-        ReadCapacityUnits: 5
-        WriteCapacityUnits: 5
-      AttributeDefinitions:
-        - AttributeName: id
-          AttributeType: S
-      KeySchema:
-        - AttributeName: id
-          KeyType: HASH
-  SmsDB:
-    Type: AWS::DynamoDB::Table
-    Properties:
-      TableName: Sms
       ProvisionedThroughput:
         ReadCapacityUnits: 5
         WriteCapacityUnits: 5
@@ -147,7 +112,6 @@ Resources:
         - !Ref DynamoDBFinanceTransactionFullAccessPolicy
         - !Ref LogGroupFullAccessPolicy
         - !Ref SMSQueueHandlerPolicy
-        - !Ref DynamoDBSmsFullAccessPolicy
   SMSHandler:
     Type: AWS::Lambda::Function
     Properties:

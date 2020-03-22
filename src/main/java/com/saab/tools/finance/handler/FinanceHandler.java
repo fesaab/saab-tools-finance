@@ -4,7 +4,6 @@ import com.saab.tools.finance.api.ResponseHandler;
 import com.saab.tools.finance.api.response.TransactionListResponse;
 import com.saab.tools.finance.api.response.TransactionResponse;
 import com.saab.tools.finance.model.entity.Transaction;
-import com.saab.tools.finance.model.mapper.TransactionResponseMapper;
 import com.saab.tools.finance.model.repository.TransactionRepository;
 
 import java.util.List;
@@ -23,7 +22,7 @@ public class FinanceHandler {
             List<Transaction> transactions = this.repository.findAll();
             TransactionListResponse response = new TransactionListResponse();
             response.setTransactionList(transactions.stream()
-                    .map(TransactionResponseMapper::mapFromEntity)
+                    .map(TransactionResponse::mapFromEntity)
                     .collect(Collectors.toList()));
             return ResponseHandler.getInstance().buildGatewayResponse(response);
         } catch (Exception e) {

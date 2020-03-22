@@ -14,7 +14,7 @@ public class SmsRepository {
         this.dao = new DynamoDBMapper(client);
     }
 
-    public void insert(SMSNotification t) {
+    public void save(SMSNotification t) {
         this.dao.save(t);
     }
 
