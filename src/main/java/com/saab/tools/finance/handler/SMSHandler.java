@@ -70,8 +70,6 @@ public class SMSHandler implements RequestHandler<SQSEvent, Void> {
                 Transaction transaction = transactionParser.parseFromSms(sms);
                 log.info("Transaction parsed from SMS: " + transaction);
 
-                // TODO: antes de salvar no banco primeiro atualizar no Google Sheets!!!!
-
                 // If it is a new transaction then save it
                 if (!transaction.isReversed()) {
                     transactionRepository.save(transaction);

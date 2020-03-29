@@ -24,21 +24,33 @@ Resources:
             - "logs:DescribeLogStreams"
           Resource:
             - "*"
-  SMSQueueHandlerPolicy:
+  SMSDeadLetterQueuePolicy:
     Type: AWS::IAM::ManagedPolicy
     Properties:
-      ManagedPolicyName: SMSQueueHandlerPolicy
+      ManagedPolicyName: SMSDeadLetterQueuePolicy
       PolicyDocument:
         Version: 2012-10-17
         Statement:
           Effect: "Allow"
           Action:
-            - "sqs:ReceiveMessage"
-            - "sqs:DeleteMessage"
-            - "sqs:GetQueueAttributes"
-            - "sqs:ChangeMessageVisibility"
+            - "sqs:SendMessage"
           Resource:
-            - !GetAtt SMSQueue.Arn
+            - !GetAtt SMSDeadLetterQueue.Arn
+#  SMSQueueHandlerPolicy:
+#    Type: AWS::IAM::ManagedPolicy
+#    Properties:
+#      ManagedPolicyName: SMSQueueHandlerPolicy
+#      PolicyDocument:
+#        Version: 2012-10-17
+#        Statement:
+#          Effect: "Allow"
+#          Action:
+#            - "sqs:ReceiveMessage"
+#            - "sqs:DeleteMessage"
+#            - "sqs:GetQueueAttributes"
+#            - "sqs:ChangeMessageVisibility"
+#          Resource:
+#            - !GetAtt SMSQueue.Arn
   DynamoDBFinanceTransactionFullAccessPolicy:
     Type: AWS::IAM::ManagedPolicy
     Properties:
@@ -66,15 +78,34 @@ Resources:
                 - 'us-east-1:'
                 - !Ref 'AWS::AccountId'
                 - ':table/FinanceTransaction'
+  DynamoDBSMSReadOnlyAccessPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: DynamoDBSMSReadOnlyAccessPolicy
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          Effect: "Allow"
+          Action:
+            - "dynamodb:GetRecords"
+            - "dynamodb:GetShardIterator"
+            - "dynamodb:DescribeStream"
+            - "dynamodb:ListStreams"
+            - "dynamodb:DescribeTable"
+            - "dynamodb:DeleteItem"
+            - "dynamodb:GetItem"
+            - "dynamodb:Scan"
+            - "dynamodb:Query"
+            - "dynamodb:UpdateItem"
+          Resource:
+            - "arn:aws:dynamodb:us-east-1:689243596060:table/Sms-t6sbvak6bfcfrmog5tw7j6o5cq-dev/stream/2020-03-29T09:36:04.035"
 
   ## DynamoDB related resources
   TransactionsDB:
     Type: AWS::DynamoDB::Table
     Properties:
       TableName: FinanceTransaction
-      ProvisionedThroughput:
-        ReadCapacityUnits: 5
-        WriteCapacityUnits: 5
+      BillingMode: PAY_PER_REQUEST
       AttributeDefinitions:
         - AttributeName: id
           AttributeType: S
@@ -87,18 +118,71 @@ Resources:
     Type: AWS::SQS::Queue
     Properties:
       QueueName: SMSDeadLetterQueue
-  SMSQueue:
-    Type: AWS::SQS::Queue
-    Properties:
-      QueueName: SMSQueue
-      ReceiveMessageWaitTimeSeconds: 20
-      RedrivePolicy:
-        deadLetterTargetArn: !GetAtt SMSDeadLetterQueue.Arn
-        maxReceiveCount: 5
-  RoleLambdaSMSQueue:
+#  SMSQueue:
+#    Type: AWS::SQS::Queue
+#    Properties:
+#      QueueName: SMSQueue
+#      ReceiveMessageWaitTimeSeconds: 20
+#      RedrivePolicy:
+#        deadLetterTargetArn: !GetAtt SMSDeadLetterQueue.Arn
+#        maxReceiveCount: 5
+#  RoleLambdaSMSQueue:
+#    Type: AWS::IAM::Role
+#    Properties:
+#      RoleName: "RoleLambdaSMSQueue"
+#      AssumeRolePolicyDocument:
+#        Version: 2012-10-17
+#        Statement:
+#          - Effect: Allow
+#            Principal:
+#              Service:
+#                - lambda.amazonaws.com
+#            Action:
+#              - 'sts:AssumeRole'
+#      ManagedPolicyArns:
+#        - !Ref DynamoDBFinanceTransactionFullAccessPolicy
+#        - !Ref LogGroupFullAccessPolicy
+#        - !Ref SMSQueueHandlerPolicy
+#  SMSHandler:
+#    Type: AWS::Lambda::Function
+#    Properties:
+#      FunctionName: SMSHandler
+#      Handler: com.saab.tools.finance.handler.SMSHandler::handleRequest
+#      Runtime: java11
+#      MemorySize: 512
+#      Timeout: 30
+#      Environment:
+#        Variables:
+#          QUEUE_URL: !Ref SMSQueue
+#      Role: !GetAtt RoleLambdaSMSQueue.Arn
+#      DeadLetterConfig:
+#        TargetArn: !GetAttSMSDeadLetterQueue.Arn
+#  SMSHandlerEventSourceMapping:
+#    Type: AWS::Lambda::EventSourceMapping
+#    DependsOn:
+#      - SMSHandler
+#      - SMSQueue
+#    Properties:
+#      BatchSize: 10
+#      Enabled: true
+#      EventSourceArn: !GetAtt SMSQueue.Arn
+#      FunctionName: !GetAtt SMSHandler.Arn
+#  SMSHandlerLogGroup:
+#    Type: AWS::Logs::LogGroup
+#    DependsOn:
+#      - SMSHandler
+#    Properties:
+#      RetentionInDays: 14
+#      LogGroupName:
+#        !Join
+#          - ''
+#          - - '/aws/lambda/'
+#            - !Ref 'SMSHandler'
+
+  RoleLambdaSMSDynamoDbHandler:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: "RoleLambdaSMSQueue"
+      RoleName: "RoleLambdaSMSDynamoDbHandler"
       AssumeRolePolicyDocument:
         Version: 2012-10-17
         Statement:
@@ -110,41 +194,31 @@ Resources:
               - 'sts:AssumeRole'
       ManagedPolicyArns:
         - !Ref DynamoDBFinanceTransactionFullAccessPolicy
+        - !Ref DynamoDBSMSReadOnlyAccessPolicy
+        - !Ref SMSDeadLetterQueuePolicy
         - !Ref LogGroupFullAccessPolicy
-        - !Ref SMSQueueHandlerPolicy
-  SMSHandler:
+  SMSDynamoDbHandler:
     Type: AWS::Lambda::Function
     Properties:
-      FunctionName: SMSHandler
-      Handler: com.saab.tools.finance.handler.SMSHandler::handleRequest
+      FunctionName: SMSDynamoDbHandler
+      Handler: com.saab.tools.finance.handler.SMSDynamoDbHandler::handleRequest
       Runtime: java11
       MemorySize: 512
       Timeout: 30
-      Environment:
-        Variables:
-          QUEUE_URL: !Ref SMSQueue
-      Role: !GetAtt RoleLambdaSMSQueue.Arn
-  SMSHandlerEventSourceMapping:
-    Type: AWS::Lambda::EventSourceMapping
-    DependsOn:
-      - SMSHandler
-      - SMSQueue
-    Properties:
-      BatchSize: 10
-      Enabled: true
-      EventSourceArn: !GetAtt SMSQueue.Arn
-      FunctionName: !GetAtt SMSHandler.Arn
+      Role: !GetAtt RoleLambdaSMSDynamoDbHandler.Arn
+      DeadLetterConfig:
+        TargetArn: !GetAtt SMSDeadLetterQueue.Arn
   SMSHandlerLogGroup:
     Type: AWS::Logs::LogGroup
     DependsOn:
-      - SMSHandler
+      - SMSDynamoDbHandler
     Properties:
       RetentionInDays: 14
       LogGroupName:
         !Join
           - ''
           - - '/aws/lambda/'
-            - !Ref 'SMSHandler'
+            - !Ref 'SMSDynamoDbHandler'
 
   ## API related resources
   ## Commented until it is time to deal with the API

@@ -36,7 +36,6 @@ public class TransactionParser {
     public Transaction parseFromSms(SMSNotification sms) {
         ExtractedTransaction et = extractData(sms.getMessage());
 
-
         return Transaction.builder()
                 .date(sms.getDate())
                 .value(et.getValue())

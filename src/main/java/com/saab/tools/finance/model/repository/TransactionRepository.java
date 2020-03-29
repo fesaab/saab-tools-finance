@@ -6,7 +6,6 @@ import com.amazonaws.services.dynamodbv2.datamodeling.DynamoDBMapper;
 import com.amazonaws.services.dynamodbv2.datamodeling.DynamoDBScanExpression;
 import com.amazonaws.services.dynamodbv2.model.AttributeValue;
 import com.saab.tools.finance.model.entity.Transaction;
-import sun.font.AttributeMap;
 
 import java.math.BigDecimal;
 import java.util.Comparator;
