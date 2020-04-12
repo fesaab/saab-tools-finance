@@ -1,9 +1,9 @@
 package com.saab.tools.finance.service;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import com.saab.tools.finance.exception.SMSNotParsedException;
 import com.saab.tools.finance.model.entity.SMSNotification;
 import com.saab.tools.finance.model.entity.Transaction;
 import lombok.Getter;
@@ -21,6 +21,8 @@ public class TransactionParser {
     private static Pattern REGEX_DEBIT_EXTRACT_VALUE = Pattern.compile("Debit order of R([0-9]+,[0-9]*)");
     private static Pattern REGEX_DEBIT_EXTRACT_SHOP = Pattern.compile("Ref: (.*)");
     private static Pattern REGEX_WARNING_EXTRACT_VALUE_AND_SHOP = Pattern.compile("Card transaction of R([0-9]+,[0-9]*) on a\\/c .* at (.*)");
+    private static Pattern REGEX_PAYMENT_VALUE = Pattern.compile("Payment of R([0-9]+,[0-9]*) from a\\/c .*");
+    private static Pattern REGEX_PAYMENT_SHOP = Pattern.compile("Ref: (.*)");
 
     private static String REVERSE_MESSAGE = "was reversed";
     private static String TYPE_EXPENSE = "Expense";
@@ -91,7 +93,7 @@ public class TransactionParser {
             // Shop
             et.setShop(valueAndShopMatcher.group(2).trim());
         } else {
-            throw new IllegalArgumentException("Couldn't extract value and shop from the message '" + message + "'");
+            throw new SMSNotParsedException("Couldn't extract value and shop from the message '" + message + "'");
         }
 
         return et;
@@ -116,7 +118,7 @@ public class TransactionParser {
             BigDecimal value = new BigDecimal(valueStr).setScale(2);
             et.setValue(value);
         } else {
-            throw new IllegalArgumentException("Couldn't extract value from the message '" + message + "'");
+            throw new SMSNotParsedException("Couldn't extract value from the message '" + message + "'");
         }
 
         // Extract shop
@@ -124,64 +126,109 @@ public class TransactionParser {
         if (shopMatcher.find()) {
             et.setShop(shopMatcher.group(1).trim());
         } else {
-            throw new IllegalArgumentException("Couldn't extract shop from the message '" + message + "'");
+            throw new SMSNotParsedException("Couldn't extract shop from the message '" + message + "'");
         }
 
         return et;
     }
 
     private ExtractedTransaction extractDataTransaction(String message) {
+        ExtractedTransaction et = null;
+
+        if (message.contains("Purchase")) {
+            et = extractDataTransactionPurchase(message);
+        } else if (message.contains("Payment")) {
+            et = extractDataTransactionPayment(message);
+        } else if (message.contains(REVERSE_MESSAGE)) {
+            et = extractDataTransactionReversed(message);
+        }
+
+        return et;
+    }
+
+    private ExtractedTransaction extractDataTransactionReversed(String message) {
         ExtractedTransaction et = new ExtractedTransaction();
         String[] messageArray = message.split("\\.");
 
-        if (message.contains(REVERSE_MESSAGE)) {
-            // Splitted message:
-            // -----------------
-            // Nedbank: Transaction
-            // R21,00 on a/c **2370 at UBER SA helpubercom Ga was reversed
-            // 21 Mar 20 at 12:29
-            String purchaseMessage = messageArray[1].trim();
+        // Splitted message:
+        // -----------------
+        // Nedbank: Transaction
+        // R21,00 on a/c **2370 at UBER SA helpubercom Ga was reversed
+        // 21 Mar 20 at 12:29
+        String purchaseMessage = messageArray[1].trim();
 
-            // Extract value and shop name
-            Matcher valueAndShopMatcher = REGEX_TRANSACTION_REVERSED_VALUE_AND_SHOP.matcher(purchaseMessage);
-            if (valueAndShopMatcher.find()) {
+        // Extract value and shop name
+        Matcher valueAndShopMatcher = REGEX_TRANSACTION_REVERSED_VALUE_AND_SHOP.matcher(purchaseMessage);
+        if (valueAndShopMatcher.find()) {
 
-                // Value
-                String valueStr = valueAndShopMatcher.group(1).replace(",", ".");
-                BigDecimal value = new BigDecimal(valueStr).setScale(2);
-                et.setValue(value);
+            // Value
+            String valueStr = valueAndShopMatcher.group(1).replace(",", ".");
+            BigDecimal value = new BigDecimal(valueStr).setScale(2);
+            et.setValue(value);
 
-                // Shop
-                et.setShop(valueAndShopMatcher.group(2).trim());
+            // Shop
+            et.setShop(valueAndShopMatcher.group(2).trim());
 
-                // Reversed
-                et.setReversed(true);
-            } else {
-                throw new IllegalArgumentException("Couldn't extract value and shop from the message '" + message + "'");
-            }
-
+            // Reversed
+            et.setReversed(true);
         } else {
-            // Splitted message:
-            // -----------------
-            // Nedbank: Transaction
-            // Purchase of R114,99 on a/c **1111 at FLM Roeland Street W
-            // 22 Mar 20 at 11:16
-            String purchaseMessage = messageArray[1].trim();
+            throw new SMSNotParsedException("Couldn't extract value and shop from the message '" + message + "'");
+        }
 
-            // Extract value and shop name
-            Matcher valueAndShopMatcher = REGEX_TRANSACTION_VALUE_AND_SHOP.matcher(purchaseMessage);
-            if (valueAndShopMatcher.find()) {
+        return et;
+    }
 
-                // Value
-                String valueStr = valueAndShopMatcher.group(1).replace(",", ".");
-                BigDecimal value = new BigDecimal(valueStr).setScale(2);
-                et.setValue(value);
+    private ExtractedTransaction extractDataTransactionPayment(String message) {
+        ExtractedTransaction et = new ExtractedTransaction();
+        String[] messageArray = message.split("\\.");
 
-                // Shop
-                et.setShop(valueAndShopMatcher.group(2).trim());
-            } else {
-                throw new IllegalArgumentException("Couldn't extract value and shop from the message '" + message + "'");
-            }
+        // Try to match with Payment
+        // Splitted message:
+        // -----------------
+        // Nedbank: Transaction
+        // Purchase of R114,99 from a/c **1111
+        // Ref: English one
+        // 22 Mar 20 at 11:16
+        String valueMessage = messageArray[1].trim();
+        String shopMessage = messageArray[2].trim();
+        Matcher valueMatcher = REGEX_PAYMENT_VALUE.matcher(valueMessage);
+        Matcher shopMatcher = REGEX_PAYMENT_SHOP.matcher(shopMessage);
+        if (valueMatcher.find() && shopMatcher.find()) {
+            // Value
+            String valueStr = valueMatcher.group(1).replace(",", ".");
+            BigDecimal value = new BigDecimal(valueStr).setScale(2);
+            et.setValue(value);
+
+            // Shop
+            et.setShop(shopMatcher.group(1).trim());
+        } else {
+            throw new SMSNotParsedException("Couldn't extract value and shop from the message '" + message + "'");
+        }
+
+        return et;
+    }
+
+    private ExtractedTransaction extractDataTransactionPurchase(String message) {
+        ExtractedTransaction et = new ExtractedTransaction();
+        String[] messageArray = message.split("\\.");
+
+        // Splitted message:
+        // -----------------
+        // Nedbank: Transaction
+        // Purchase of R114,99 on a/c **1111 at FLM Roeland Street W
+        // 22 Mar 20 at 11:16
+        String purchaseMessage = messageArray[1].trim();
+        Matcher valueAndShopMatcher = REGEX_TRANSACTION_VALUE_AND_SHOP.matcher(purchaseMessage);
+        if (valueAndShopMatcher.find()) {
+            // Value
+            String valueStr = valueAndShopMatcher.group(1).replace(",", ".");
+            BigDecimal value = new BigDecimal(valueStr).setScale(2);
+            et.setValue(value);
+
+            // Shop
+            et.setShop(valueAndShopMatcher.group(2).trim());
+        } else {
+            throw new SMSNotParsedException("Couldn't extract value and shop from the message '" + message + "'");
         }
 
         return et;

@@ -1,9 +1,7 @@
 package com.saab.tools.finance.model.entity;
 
-import com.amazonaws.services.dynamodbv2.datamodeling.*;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
-import com.saab.tools.finance.model.converter.LocalDateTimeConverter;
 import com.saab.tools.finance.model.converter.LocalDateTimeJsonDeserializer;
 import lombok.*;
 import org.apache.commons.lang3.builder.ReflectionToStringBuilder;
@@ -23,6 +21,7 @@ public class SMSNotification {
     private LocalDateTime date;
     private String number;
     private String message;
+    private String id;
 
     @JsonIgnore
     private String rawMessage;

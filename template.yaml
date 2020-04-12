@@ -6,6 +6,11 @@ Globals:
   Function:
     Timeout: 20
 
+Mappings:
+  ConstantsMap:
+    DynamoDB:
+      SMSArn: "arn:aws:dynamodb:us-east-1:689243596060:table/Sms-t6sbvak6bfcfrmog5tw7j6o5cq-dev/stream/2020-03-29T09:36:04.035"
+
 Resources:
 
   ## IAM Policies
@@ -98,7 +103,7 @@ Resources:
             - "dynamodb:Query"
             - "dynamodb:UpdateItem"
           Resource:
-            - "arn:aws:dynamodb:us-east-1:689243596060:table/Sms-t6sbvak6bfcfrmog5tw7j6o5cq-dev/stream/2020-03-29T09:36:04.035"
+            - !FindInMap [ConstantsMap, "DynamoDB", "SMSArn"]
 
   ## DynamoDB related resources
   TransactionsDB:
@@ -219,6 +224,21 @@ Resources:
           - ''
           - - '/aws/lambda/'
             - !Ref 'SMSDynamoDbHandler'
+  SMSHandlerEventSourceMapping:
+    Type: AWS::Lambda::EventSourceMapping
+    DependsOn:
+      - SMSDynamoDbHandler
+    Properties:
+      BatchSize: 10
+      Enabled: true
+      EventSourceArn: !FindInMap [ConstantsMap, "DynamoDB", "SMSArn"]
+      FunctionName: !GetAtt SMSDynamoDbHandler.Arn
+      MaximumRetryAttempts: 2
+      StartingPosition: LATEST
+      DestinationConfig:
+        OnFailure:
+          Destination: !GetAtt SMSDeadLetterQueue.Arn
+
 
   ## API related resources
   ## Commented until it is time to deal with the API

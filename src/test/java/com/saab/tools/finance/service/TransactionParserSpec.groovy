@@ -3,11 +3,10 @@ package com.saab.tools.finance.service
 import com.saab.tools.finance.model.entity.SMSNotification
 import com.saab.tools.finance.model.entity.Transaction
 import org.junit.Assert
-import spock.lang.Specification
 
 import java.time.LocalDateTime
 
-class TransactionParserSpec extends Specification {
+class TransactionParserSpec extends AbstractSpec {
 
     TransactionParser transactionParser;
 
@@ -40,6 +39,31 @@ class TransactionParserSpec extends Specification {
         "R114,99" | new BigDecimal("114.99") | "FLM Roeland Street W"  | false
         "R9,07"   | new BigDecimal("9.07")   | "Amazon AWS"            | false
         "R349,00" | new BigDecimal("349.00") | "NORMAN GOODFELLOWS UN" | false
+    }
+
+    def "test payment message"() {
+        given: "the SMS Notification"
+        LocalDateTime date = LocalDateTime.now()
+        String smsMessage = String.format("Nedbank: Transaction. Payment of %s from a/c **1111. Ref: %s. 04 Apr 20 at 17:15.",
+                strValue,
+                shop)
+        SMSNotification sms = buildSmsNotification(smsMessage, date)
+
+        when: "the parser is executed"
+        Transaction t = transactionParser.parseFromSms(sms)
+
+        then: "no exception =]"
+        noExceptionThrown()
+
+        and: "the conversion matches"
+        Assert.assertTrue(t.getDate() == date)
+        Assert.assertTrue(t.getValue() == value)
+        Assert.assertTrue(t.getDescription() == shop)
+        Assert.assertTrue(t.isReversed() == reversed)
+
+        where: "many test values"
+        strValue   | value                      | shop                    | reversed
+        "R5620,00" | new BigDecimal("5620.00")  | "English One"           | false
     }
 
     def "test debit message"() {
@@ -108,13 +132,6 @@ class TransactionParserSpec extends Specification {
         Assert.assertTrue(t.getValue() == new BigDecimal("21.00"))
         Assert.assertTrue(!t.getDescription().contains("was reversed"))
         Assert.assertTrue(t.isReversed())
-    }
-
-    private SMSNotification buildSmsNotification(String message, LocalDateTime date) {
-        return SMSNotification.builder()
-                .date(date)
-                .message(message)
-                .build();
     }
 
 }
