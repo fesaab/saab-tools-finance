@@ -9,7 +9,9 @@ Globals:
 Mappings:
   ConstantsMap:
     DynamoDB:
-      SMSArn: "arn:aws:dynamodb:us-east-1:689243596060:table/Sms-t6sbvak6bfcfrmog5tw7j6o5cq-dev/stream/2020-03-29T09:36:04.035"
+      SMSTableArn: "arn:aws:dynamodb:us-east-1:689243596060:table/Sms-t6sbvak6bfcfrmog5tw7j6o5cq-dev"
+      SMSStreamArn: "arn:aws:dynamodb:us-east-1:689243596060:table/Sms-t6sbvak6bfcfrmog5tw7j6o5cq-dev/stream/2020-03-29T09:36:04.035"
+      SMSIndexArn: "arn:aws:dynamodb:us-east-1:689243596060:table/Sms-t6sbvak6bfcfrmog5tw7j6o5cq-dev/stream/2020-03-29T09:36:04.035/index/*"
 
 Resources:
 
@@ -41,21 +43,6 @@ Resources:
             - "sqs:SendMessage"
           Resource:
             - !GetAtt SMSDeadLetterQueue.Arn
-#  SMSQueueHandlerPolicy:
-#    Type: AWS::IAM::ManagedPolicy
-#    Properties:
-#      ManagedPolicyName: SMSQueueHandlerPolicy
-#      PolicyDocument:
-#        Version: 2012-10-17
-#        Statement:
-#          Effect: "Allow"
-#          Action:
-#            - "sqs:ReceiveMessage"
-#            - "sqs:DeleteMessage"
-#            - "sqs:GetQueueAttributes"
-#            - "sqs:ChangeMessageVisibility"
-#          Resource:
-#            - !GetAtt SMSQueue.Arn
   DynamoDBFinanceTransactionFullAccessPolicy:
     Type: AWS::IAM::ManagedPolicy
     Properties:
@@ -76,17 +63,22 @@ Resources:
             - "dynamodb:Query"
             - "dynamodb:UpdateItem"
           Resource:
-            - "arn:aws:dynamodb:*:*:table/*/index/*"
+            - !Join
+              - ''
+              - - 'arn:aws:dynamodb:'
+                - 'us-east-1:'
+                - !Ref 'AWS::AccountId'
+                - ':table/FinanceTransaction/index/*'
             - !Join
               - ''
               - - 'arn:aws:dynamodb:'
                 - 'us-east-1:'
                 - !Ref 'AWS::AccountId'
                 - ':table/FinanceTransaction'
-  DynamoDBSMSReadOnlyAccessPolicy:
+  DynamoDBSMSFullAccessPolicy:
     Type: AWS::IAM::ManagedPolicy
     Properties:
-      ManagedPolicyName: DynamoDBSMSReadOnlyAccessPolicy
+      ManagedPolicyName: DynamoDBSMSFullAccessPolicy
       PolicyDocument:
         Version: 2012-10-17
         Statement:
@@ -103,7 +95,9 @@ Resources:
             - "dynamodb:Query"
             - "dynamodb:UpdateItem"
           Resource:
-            - !FindInMap [ConstantsMap, "DynamoDB", "SMSArn"]
+            - !FindInMap [ConstantsMap, "DynamoDB", "SMSTableArn"]
+            - !FindInMap [ConstantsMap, "DynamoDB", "SMSStreamArn"]
+            - !FindInMap [ConstantsMap, "DynamoDB", "SMSIndexArn"]
 
   ## DynamoDB related resources
   TransactionsDB:
@@ -199,7 +193,7 @@ Resources:
               - 'sts:AssumeRole'
       ManagedPolicyArns:
         - !Ref DynamoDBFinanceTransactionFullAccessPolicy
-        - !Ref DynamoDBSMSReadOnlyAccessPolicy
+        - !Ref DynamoDBSMSFullAccessPolicy
         - !Ref SMSDeadLetterQueuePolicy
         - !Ref LogGroupFullAccessPolicy
   SMSDynamoDbHandler:
@@ -229,9 +223,9 @@ Resources:
     DependsOn:
       - SMSDynamoDbHandler
     Properties:
-      BatchSize: 10
+      BatchSize: 1
       Enabled: true
-      EventSourceArn: !FindInMap [ConstantsMap, "DynamoDB", "SMSArn"]
+      EventSourceArn: !FindInMap [ConstantsMap, "DynamoDB", "SMSStreamArn"]
       FunctionName: !GetAtt SMSDynamoDbHandler.Arn
       MaximumRetryAttempts: 2
       StartingPosition: LATEST

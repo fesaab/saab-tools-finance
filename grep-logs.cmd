@@ -1,0 +1,1 @@
+awslogs --start='30m' get /aws/lambda/SMSDynamoDbHandler

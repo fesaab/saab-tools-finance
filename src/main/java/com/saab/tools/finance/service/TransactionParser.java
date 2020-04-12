@@ -23,9 +23,14 @@ public class TransactionParser {
     private static Pattern REGEX_WARNING_EXTRACT_VALUE_AND_SHOP = Pattern.compile("Card transaction of R([0-9]+,[0-9]*) on a\\/c .* at (.*)");
     private static Pattern REGEX_PAYMENT_VALUE = Pattern.compile("Payment of R([0-9]+,[0-9]*) from a\\/c .*");
     private static Pattern REGEX_PAYMENT_SHOP = Pattern.compile("Ref: (.*)");
+    private static Pattern REGEX_OVERNIGHT_VALUE = Pattern.compile("Overnight Transaction deposit of R([0-9]+,[0-9]*) into a\\/c .*");
+    private static Pattern REGEX_OVERNIGHT_SHOP = Pattern.compile("Ref: (.*)");
+    private static Pattern REGEX_TRANSFER_VALUE_AND_SHOP = Pattern.compile("R([0-9]+,[0-9]*) transferred (from .*)");
+    private static Pattern REGEX_PAID_VALUE = Pattern.compile("R([0-9]+,[0-9]*) paid to a\\/c .*");
+    private static Pattern REGEX_PAID_SHOP = Pattern.compile("Ref: (.*)");
+
 
     private static String REVERSE_MESSAGE = "was reversed";
-    private static String TYPE_EXPENSE = "Expense";
 
     private ObjectMapper objectMapper;
 
@@ -43,18 +48,19 @@ public class TransactionParser {
                 .value(et.getValue())
                 .description(et.getShop())
                 .category("TODO")
-                .type(TYPE_EXPENSE)
+                .type(et.getType())
                 .reversed(et.isReversed())
                 .reversedDate(et.isReversed() ? sms.getDate(): null)
-                .sms(sms.getRawMessage())
+                .smsId(sms.getId())
                 .build();
     }
 
     private ExtractedTransaction extractData(String message) {
         ExtractedTransaction et = null;
 
-        // Normalize te dots on the message. More than one consecutive dot is a problem for the algorithm
+        // Normalize te dots and spaces on the message. More than one consecutive dot is a problem for the algorithm
         message = message.replaceAll("[\\.]+", "\\.");
+        message = message.replaceAll("[ ]+", " ");
 
         if (message.contains("Nedbank: Transaction.")) {
             et = extractDataTransaction(message);
@@ -72,6 +78,7 @@ public class TransactionParser {
 
     private ExtractedTransaction extractDataWarning(String message) {
         ExtractedTransaction et = new ExtractedTransaction();
+        et.setType(Transaction.TYPE_EXPENSE);
 
         // Splitted message:
         // -----------------
@@ -101,6 +108,7 @@ public class TransactionParser {
 
     private ExtractedTransaction extractDataDebit(String message) {
         ExtractedTransaction et = new ExtractedTransaction();
+        et.setType(Transaction.TYPE_EXPENSE);
 
         // Splitted message:
         // -----------------
@@ -139,8 +147,101 @@ public class TransactionParser {
             et = extractDataTransactionPurchase(message);
         } else if (message.contains("Payment")) {
             et = extractDataTransactionPayment(message);
+        } else if (message.contains("Overnight")) {
+            et = extractDataTransactionOvernight(message);
         } else if (message.contains(REVERSE_MESSAGE)) {
             et = extractDataTransactionReversed(message);
+        } else if (message.contains("transferred from")) {
+            et = extractDataTransactionTransferred(message);
+        } else if (message.contains("paid to")) {
+            et = extractDataTransactionPaid(message);
+        }
+
+        return et;
+    }
+
+    private ExtractedTransaction extractDataTransactionPaid(String message) {
+        ExtractedTransaction et = new ExtractedTransaction();
+        et.setType(Transaction.TYPE_INCOME);
+        String[] messageArray = message.split("\\.");
+
+        // Splitted message:
+        // -----------------
+        // Nedbank: Transaction
+        // R7152,52 paid to a/c **1111
+        // Ref: COMPANY CMPN-23
+        // 09 Apr 20 at 02:01
+        String valueMessage = messageArray[1].trim();
+        String shopMessage = messageArray[2].trim();
+        Matcher valueMatcher = REGEX_PAID_VALUE.matcher(valueMessage);
+        Matcher shopMatcher = REGEX_PAID_SHOP.matcher(shopMessage);
+        if (valueMatcher.find() && shopMatcher.find()) {
+            // Value
+            String valueStr = valueMatcher.group(1).replace(",", ".");
+            BigDecimal value = new BigDecimal(valueStr).setScale(2);
+            et.setValue(value);
+
+            // Shop
+            et.setShop(shopMatcher.group(1).trim());
+        } else {
+            throw new SMSNotParsedException("Couldn't extract value and shop from the message '" + message + "'");
+        }
+
+        return et;
+    }
+
+    private ExtractedTransaction extractDataTransactionTransferred(String message) {
+        ExtractedTransaction et = new ExtractedTransaction();
+        et.setType(Transaction.TYPE_EXPENSE);
+        String[] messageArray = message.split("\\.");
+
+        // Splitted message:
+        // -----------------
+        // Nedbank: Transaction
+        // R2000,00 transferred from a/c **1111 to a/c **2222
+        // 09 Apr 20 at 02:01
+        String valueMessage = messageArray[1].trim();
+        Matcher valueAndShopMatcher = REGEX_TRANSFER_VALUE_AND_SHOP.matcher(valueMessage);
+        if (valueAndShopMatcher.find()) {
+            // Value
+            String valueStr = valueAndShopMatcher.group(1).replace(",", ".");
+            BigDecimal value = new BigDecimal(valueStr).setScale(2);
+            et.setValue(value);
+
+            // Shop
+            et.setShop(valueAndShopMatcher.group(2).trim());
+        } else {
+            throw new SMSNotParsedException("Couldn't extract value and shop from the message '" + message + "'");
+        }
+
+        return et;
+    }
+
+    private ExtractedTransaction extractDataTransactionOvernight(String message) {
+        ExtractedTransaction et = new ExtractedTransaction();
+        et.setType(Transaction.TYPE_INCOME);
+        String[] messageArray = message.split("\\.");
+
+        // Splitted message:
+        // -----------------
+        // Nedbank: Transaction
+        // Overnight Transaction deposit of R49,99 into a/c **1111
+        // Ref: Bottlesapp 541282
+        // 09 Apr 20 at 02:01
+        String valueMessage = messageArray[1].trim();
+        String shopMessage = messageArray[2].trim();
+        Matcher valueMatcher = REGEX_OVERNIGHT_VALUE.matcher(valueMessage);
+        Matcher shopMatcher = REGEX_OVERNIGHT_SHOP.matcher(shopMessage);
+        if (valueMatcher.find() && shopMatcher.find()) {
+            // Value
+            String valueStr = valueMatcher.group(1).replace(",", ".");
+            BigDecimal value = new BigDecimal(valueStr).setScale(2);
+            et.setValue(value);
+
+            // Shop
+            et.setShop(shopMatcher.group(1).trim());
+        } else {
+            throw new SMSNotParsedException("Couldn't extract value and shop from the message '" + message + "'");
         }
 
         return et;
@@ -148,6 +249,7 @@ public class TransactionParser {
 
     private ExtractedTransaction extractDataTransactionReversed(String message) {
         ExtractedTransaction et = new ExtractedTransaction();
+        et.setType(Transaction.TYPE_EXPENSE);
         String[] messageArray = message.split("\\.");
 
         // Splitted message:
@@ -180,9 +282,9 @@ public class TransactionParser {
 
     private ExtractedTransaction extractDataTransactionPayment(String message) {
         ExtractedTransaction et = new ExtractedTransaction();
+        et.setType(Transaction.TYPE_EXPENSE);
         String[] messageArray = message.split("\\.");
 
-        // Try to match with Payment
         // Splitted message:
         // -----------------
         // Nedbank: Transaction
@@ -210,6 +312,7 @@ public class TransactionParser {
 
     private ExtractedTransaction extractDataTransactionPurchase(String message) {
         ExtractedTransaction et = new ExtractedTransaction();
+        et.setType(Transaction.TYPE_EXPENSE);
         String[] messageArray = message.split("\\.");
 
         // Splitted message:
@@ -241,6 +344,7 @@ public class TransactionParser {
         private BigDecimal value;
         private String shop;
         private boolean reversed;
+        private String type;
     }
 
 }

@@ -5,7 +5,9 @@ import com.amazonaws.services.lambda.runtime.Context;
 import com.amazonaws.services.lambda.runtime.RequestHandler;
 import com.amazonaws.services.lambda.runtime.events.DynamodbEvent;
 import com.saab.tools.finance.model.entity.SMSNotification;
+import com.saab.tools.finance.model.entity.Sms;
 import com.saab.tools.finance.model.entity.Transaction;
+import com.saab.tools.finance.model.repository.SmsRepository;
 import com.saab.tools.finance.model.repository.TransactionRepository;
 import com.saab.tools.finance.service.SMSParser;
 import com.saab.tools.finance.service.TransactionParser;
@@ -21,11 +23,13 @@ public class SMSDynamoDbHandler implements RequestHandler<DynamodbEvent, Void> {
     private TransactionRepository transactionRepository;
     private TransactionParser transactionParser;
     private SMSParser smsParser;
+    private SmsRepository smsRepository;
 
     public SMSDynamoDbHandler() {
         this.transactionRepository = new TransactionRepository();
         this.transactionParser = new TransactionParser();
         this.smsParser = new SMSParser();
+        this.smsRepository = new SmsRepository();
     }
 
     @Override
@@ -89,8 +93,13 @@ public class SMSDynamoDbHandler implements RequestHandler<DynamodbEvent, Void> {
         // If it is a new transaction then save it
         if (!transaction.isReversed()) {
             transactionRepository.save(transaction);
-            log.info("Transaction saved on DB: " + transaction.getId());
-            // TODO: publicar métrica com o valor da transação (será que faz sentido?)
+            log.info("Transaction saved on DB: " + transaction.toString());
+
+            // Flag that the SMS generated a transaction
+            Sms sms = smsRepository.findById(transaction.getSmsId());
+            sms.setGenerateTransaction(true);
+            smsRepository.save(sms);
+            log.info("SMS updated on DB: " + sms.toString());
         }
         // If the transaction was reversed then just updated it
         else {
@@ -102,7 +111,7 @@ public class SMSDynamoDbHandler implements RequestHandler<DynamodbEvent, Void> {
                 transactionRepository.save(lastTransaction);
                 log.info("Transaction reversed on DB: " + lastTransaction);
             } else {
-                log.warn("COULD NOT FIND THE ORIGINAL TRANSACTION TO REVERT!!! Transaction: " + transaction + ". SMS: " + transaction.getSms());
+                log.warn("COULD NOT FIND THE ORIGINAL TRANSACTION TO REVERT!!! Transaction: " + transaction + ". SMS: " + transaction.getSmsId());
                 // TODO: publicar métrica
             }
         }
