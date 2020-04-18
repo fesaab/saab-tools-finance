@@ -7,8 +7,11 @@
         <sourceOutputDir name="target/generated-sources/annotations" />
         <sourceTestOutputDir name="target/generated-test-sources/test-annotations" />
         <outputRelativeToContentRoot value="true" />
-        <module name="saab-tools-finance" />
+        <module name="finance" />
       </profile>
     </annotationProcessing>
+    <bytecodeTargetLevel>
+      <module name="finance" target="1.8" />
+    </bytecodeTargetLevel>
   </component>
 </project>

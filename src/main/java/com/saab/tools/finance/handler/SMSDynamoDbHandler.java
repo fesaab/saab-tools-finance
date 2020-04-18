@@ -20,16 +20,20 @@ import java.util.Map;
 @Log4j2
 public class SMSDynamoDbHandler implements RequestHandler<DynamodbEvent, Void> {
 
+    private static final String ENV_VAR_TABLE_SMS = "smsTableName";
+    private static final String ENV_VAR_TABLE_TRANSACTION = "transactionTableName";
+
     private TransactionRepository transactionRepository;
     private TransactionParser transactionParser;
     private SMSParser smsParser;
     private SmsRepository smsRepository;
 
+
     public SMSDynamoDbHandler() {
-        this.transactionRepository = new TransactionRepository();
+        this.transactionRepository = new TransactionRepository(System.getenv(ENV_VAR_TABLE_TRANSACTION));
+        this.smsRepository = new SmsRepository(System.getenv(ENV_VAR_TABLE_SMS));
         this.transactionParser = new TransactionParser();
         this.smsParser = new SMSParser();
-        this.smsRepository = new SmsRepository();
     }
 
     @Override

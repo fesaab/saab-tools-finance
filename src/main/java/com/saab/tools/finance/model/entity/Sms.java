@@ -11,7 +11,7 @@ import java.time.LocalDateTime;
 @AllArgsConstructor
 @Getter
 @Setter
-@DynamoDBTable(tableName="Sms-t6sbvak6bfcfrmog5tw7j6o5cq-dev")
+@DynamoDBTable(tableName="REPLACED_BY_ENVIRONMENT_VARIABLE")
 @ToString
 public class Sms {
 

@@ -12,7 +12,7 @@ import java.time.LocalDateTime;
 @AllArgsConstructor
 @Getter
 @Setter
-@DynamoDBTable(tableName="FinanceTransaction")
+@DynamoDBTable(tableName="REPLACED_BY_ENVIRONMENT_VARIABLE")
 @ToString
 public class Transaction {
 
