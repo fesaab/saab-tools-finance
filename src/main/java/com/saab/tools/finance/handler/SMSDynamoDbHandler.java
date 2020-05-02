@@ -7,6 +7,7 @@ import com.amazonaws.services.lambda.runtime.events.DynamodbEvent;
 import com.saab.tools.finance.model.entity.SMSNotification;
 import com.saab.tools.finance.model.entity.Sms;
 import com.saab.tools.finance.model.entity.Transaction;
+import com.saab.tools.finance.model.repository.CategoryMappingRepository;
 import com.saab.tools.finance.model.repository.SmsRepository;
 import com.saab.tools.finance.model.repository.TransactionRepository;
 import com.saab.tools.finance.service.SMSParser;
@@ -22,17 +23,20 @@ public class SMSDynamoDbHandler implements RequestHandler<DynamodbEvent, Void> {
 
     private static final String ENV_VAR_TABLE_SMS = "smsTableName";
     private static final String ENV_VAR_TABLE_TRANSACTION = "transactionTableName";
+    private static final String ENV_VAR_TABLE_CATEGORY_MAPPING = "categoriesMappingTableName";
 
     private TransactionRepository transactionRepository;
     private TransactionParser transactionParser;
     private SMSParser smsParser;
     private SmsRepository smsRepository;
+    private CategoryMappingRepository categoryMappingRepository;
 
 
     public SMSDynamoDbHandler() {
         this.transactionRepository = new TransactionRepository(System.getenv(ENV_VAR_TABLE_TRANSACTION));
         this.smsRepository = new SmsRepository(System.getenv(ENV_VAR_TABLE_SMS));
-        this.transactionParser = new TransactionParser();
+        this.categoryMappingRepository = new CategoryMappingRepository(System.getenv(ENV_VAR_TABLE_CATEGORY_MAPPING));
+        this.transactionParser = new TransactionParser(categoryMappingRepository);
         this.smsParser = new SMSParser();
     }
 

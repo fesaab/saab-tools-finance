@@ -3,16 +3,22 @@ package com.saab.tools.finance.service
 import com.saab.tools.finance.model.entity.SMSNotification
 import com.saab.tools.finance.model.entity.Transaction
 import org.junit.Assert
+import spock.lang.Unroll
 
 import java.awt.font.TransformAttribute
 import java.time.LocalDateTime
 
+@Unroll
 class TransactionParserSpec extends AbstractSpec {
 
     TransactionParser transactionParser;
+    CategoryMapper categoryMapper;
 
     def "setup"() {
-        transactionParser = new TransactionParser()
+        categoryMapper = Mock(CategoryMapper)
+        categoryMapper.map(_) >> "TODO"
+
+        transactionParser = new TransactionParser(null, categoryMapper, null)
     }
 
     def "test transaction message"() {

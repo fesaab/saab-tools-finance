@@ -6,6 +6,7 @@ import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.saab.tools.finance.exception.SMSNotParsedException;
 import com.saab.tools.finance.model.entity.SMSNotification;
 import com.saab.tools.finance.model.entity.Transaction;
+import com.saab.tools.finance.model.repository.CategoryMappingRepository;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
@@ -33,11 +34,29 @@ public class TransactionParser {
     private static String REVERSE_MESSAGE = "was reversed";
 
     private ObjectMapper objectMapper;
+    private CategoryMapper categoryMapper;
 
     public TransactionParser() {
-        this.objectMapper = new ObjectMapper()
-                .registerModule(new JavaTimeModule())
-                .configure(DeserializationFeature.READ_DATE_TIMESTAMPS_AS_NANOSECONDS, false);
+        this(null, null, null);
+    }
+
+    public TransactionParser(CategoryMappingRepository categoryMappingRepository) {
+        this(null, null, categoryMappingRepository);
+    }
+
+    public TransactionParser(ObjectMapper objectMapper, CategoryMapper categoryMapper, CategoryMappingRepository categoryMappingRepository) {
+        if (objectMapper == null) {
+            new ObjectMapper()
+                    .registerModule(new JavaTimeModule())
+                    .configure(DeserializationFeature.READ_DATE_TIMESTAMPS_AS_NANOSECONDS, false);
+        } else {
+            this.objectMapper = objectMapper;
+        }
+
+        if (categoryMapper == null)
+            this.categoryMapper = new CategoryMapper(categoryMappingRepository);
+        else
+            this.categoryMapper = categoryMapper;
     }
 
     public Transaction parseFromSms(SMSNotification sms) {
@@ -47,7 +66,7 @@ public class TransactionParser {
                 .date(sms.getDate())
                 .value(et.getValue())
                 .description(et.getShop())
-                .category("TODO")
+                .category(categoryMapper.map(et.getShop()))
                 .type(et.getType())
                 .reversed(et.isReversed())
                 .reversedDate(et.isReversed() ? sms.getDate(): null)

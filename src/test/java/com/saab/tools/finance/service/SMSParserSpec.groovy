@@ -1,5 +1,8 @@
 package com.saab.tools.finance.service
 
+import spock.lang.Unroll
+
+@Unroll
 class SMSParserSpec extends AbstractSpec {
 
     SMSParser smsParser;
