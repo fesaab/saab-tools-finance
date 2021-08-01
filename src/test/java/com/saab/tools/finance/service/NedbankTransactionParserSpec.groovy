@@ -5,20 +5,19 @@ import com.saab.tools.finance.model.entity.Transaction
 import org.junit.Assert
 import spock.lang.Unroll
 
-import java.awt.font.TransformAttribute
 import java.time.LocalDateTime
 
 @Unroll
-class TransactionParserSpec extends AbstractSpec {
+class NedbankTransactionParserSpec extends AbstractSpec {
 
-    TransactionParser transactionParser;
+    NedbankTransactionParser transactionParser;
     CategoryMapper categoryMapper;
 
     def "setup"() {
         categoryMapper = Mock(CategoryMapper)
         categoryMapper.map(_) >> "TODO"
 
-        transactionParser = new TransactionParser(null, categoryMapper, null)
+        transactionParser = new NedbankTransactionParser(null, categoryMapper, null)
     }
 
     def "test transaction message"() {

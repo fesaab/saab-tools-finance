@@ -8,9 +8,8 @@ import java.time.ZoneId;
 public class SMSParser {
 
     public boolean isIgnored(String message) {
-        return !message.startsWith("Nedbank: Transaction.")
-                && !message.startsWith("Nedbank: Debit order")
-                && !message.startsWith("Nedbank: Warning.");
+        return !message.contains("Itau Uniclass")
+                && !message.startsWith("O pagamento de TITULOS");
     }
 
     public SMSNotification parse(String id, String smsMessage, Long date, String number) {

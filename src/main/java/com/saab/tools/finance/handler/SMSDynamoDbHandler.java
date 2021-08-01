@@ -10,7 +10,9 @@ import com.saab.tools.finance.model.entity.Transaction;
 import com.saab.tools.finance.model.repository.CategoryMappingRepository;
 import com.saab.tools.finance.model.repository.SmsRepository;
 import com.saab.tools.finance.model.repository.TransactionRepository;
+import com.saab.tools.finance.service.ItauTransactionParser;
 import com.saab.tools.finance.service.SMSParser;
+import com.saab.tools.finance.service.NedbankTransactionParser;
 import com.saab.tools.finance.service.TransactionParser;
 import lombok.extern.log4j.Log4j2;
 import org.apache.commons.lang3.builder.ReflectionToStringBuilder;
@@ -19,6 +21,7 @@ import java.util.List;
 import java.util.Map;
 
 @Log4j2
+@Deprecated
 public class SMSDynamoDbHandler implements RequestHandler<DynamodbEvent, Void> {
 
     private static final String ENV_VAR_TABLE_SMS = "smsTableName";
@@ -36,7 +39,7 @@ public class SMSDynamoDbHandler implements RequestHandler<DynamodbEvent, Void> {
         this.transactionRepository = new TransactionRepository(System.getenv(ENV_VAR_TABLE_TRANSACTION));
         this.smsRepository = new SmsRepository(System.getenv(ENV_VAR_TABLE_SMS));
         this.categoryMappingRepository = new CategoryMappingRepository(System.getenv(ENV_VAR_TABLE_CATEGORY_MAPPING));
-        this.transactionParser = new TransactionParser(categoryMappingRepository);
+        this.transactionParser = new ItauTransactionParser(categoryMappingRepository);
         this.smsParser = new SMSParser();
     }
 
@@ -87,11 +90,15 @@ public class SMSDynamoDbHandler implements RequestHandler<DynamodbEvent, Void> {
             SMSNotification sms = smsParser.parse(id, smsMessage, date, number);
             log.info("SMS sucessfully converted: " + sms);
 
-            // Parse the SMS to a Transaction
-            Transaction transaction = transactionParser.parseFromSms(sms);
-            log.info("Transaction parsed from SMS: " + transaction);
-
-            return transaction;
+            try {
+                // Parse the SMS to a Transaction
+                Transaction transaction = transactionParser.parseFromSms(sms);
+                log.info("Transaction parsed from SMS: " + transaction);
+                return transaction;
+            } catch (IllegalArgumentException e) {
+                log.error("SMS not parseable, ignoring it!", e);
+                return null;
+            }
         }
 
         return null;
